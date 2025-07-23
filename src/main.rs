@@ -190,6 +190,7 @@ impl eframe::App for EguiApp {
                                 egui::TextEdit::singleline(
                                     &mut self.homeserver,
                                 )
+                                .margin(egui::vec2(12.0, 8.0))
                                 .hint_text("Homeserver")
                                 .id(egui::Id::new("homeserver_input")),
                             );
@@ -271,6 +272,9 @@ impl eframe::App for EguiApp {
                                                     egui::TextEdit::singleline(
                                                         &mut self.localpart,
                                                     )
+                                                    .margin(egui::vec2(
+                                                        12.0, 8.0,
+                                                    ))
                                                     .hint_text("Username"),
                                                 );
                                             });

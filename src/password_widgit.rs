@@ -15,6 +15,7 @@ fn password_ui(ui: &mut egui::Ui, password: &mut String) -> egui::Response {
             ui.add_sized(
                 [200., 32.],
                 egui::TextEdit::singleline(password)
+                    .margin(egui::vec2(12.0, 8.0))
                     .password(!show_plaintext)
                     .hint_text("Password"),
             );
