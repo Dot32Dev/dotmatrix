@@ -290,6 +290,7 @@ impl eframe::App for EguiApp {
                 log = "Logging in".to_string();
             }
             LoginStatus::Success => {
+                enabled = false;
                 log = "Logged in".to_string();
             }
             LoginStatus::Error(ref error) => {
