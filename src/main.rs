@@ -77,6 +77,17 @@ struct EguiApp {
 
 impl EguiApp {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        // Clone the current style
+        let mut style: egui::Style = (*cc.egui_ctx.style()).clone();
+
+        // Increase spacing globally
+        style.spacing.item_spacing = egui::vec2(12.0, 12.0); // space between widgets
+        style.spacing.button_padding = egui::vec2(12.0, 8.0); // padding inside buttons
+        // style.spacing.window_margin = egui::Margin::symmetric(20.0, 20.0); // margin inside windows
+
+        // Apply modified style
+        cc.egui_ctx.set_style(style);
+
         let mut egui_app = Self::default();
         egui_app.homeserver = "matrix.org".to_string();
 
@@ -156,30 +167,45 @@ impl eframe::App for EguiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             Modal::new(Id::new("Login")).show(ui.ctx(), |ui| {
-                ui.set_width(250.0);
-                ui.set_min_height(200.0);
+                ui.set_width(350.0);
+                ui.set_min_height(350.0);
                 ui.vertical_centered(|ui| {
                     ui.heading("Login");
-
                     ui.add_enabled_ui(!false, |ui| {
                         ui.horizontal(|ui| {
-                            ui.label("Homeserver:");
-                            let response = ui.add(
-                                egui::TextEdit::singleline(&mut self.homeserver)
-                                    .hint_text("Homeserver")
-                                    .id(egui::Id::new("homeserver_input"))
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(80.0, 32.0),
+                                egui::Layout::left_to_right(
+                                    egui::Align::Center,
+                                ),
+                                |ui| {
+                                    ui.add_sized(
+                                        [75.0, 32.0],
+                                        egui::Label::new("Homeserver:"),
+                                    );
+                                },
+                            );
+                            let response = ui.add_sized(
+                                [200.0, 32.0],
+                                egui::TextEdit::singleline(
+                                    &mut self.homeserver,
+                                )
+                                .hint_text("Homeserver")
+                                .id(egui::Id::new("homeserver_input")),
                             );
 
-                            if ui.button("Search").clicked()
+                            if ui.button("🔍").clicked()
                                 || (response.lost_focus()
-                                    && ui
-                                        .input(|i| i.key_pressed(egui::Key::Enter)))
+                                    && ui.input(|i| {
+                                        i.key_pressed(egui::Key::Enter)
+                                    }))
                             {
                                 match self.homeserver_status {
-                                    HomeserverStatus::Idle | HomeserverStatus::AuthTypes(_) => {
+                                    HomeserverStatus::Idle
+                                    | HomeserverStatus::AuthTypes(_) => {
                                         self.homeserver_connect(ctx);
                                     }
-                                    _ => ()
+                                    _ => (),
                                 }
                             }
                         });
@@ -195,6 +221,8 @@ impl eframe::App for EguiApp {
                                 }
                             }
                         }
+
+                        ui.separator();
 
                         match self.homeserver_status {
                             HomeserverStatus::Idle => (),
@@ -217,7 +245,6 @@ impl eframe::App for EguiApp {
                                 );
                             }
                             HomeserverStatus::AuthTypes(ref auth_types) => {
-                                ui.separator();
                                 for (i, login_choice) in
                                     auth_types.iter().enumerate()
                                 {
@@ -225,8 +252,22 @@ impl eframe::App for EguiApp {
                                         LoginChoice::Password => {
                                             ui.label("Login with password:");
                                             ui.horizontal(|ui| {
-                                                ui.label("Username:");
-                                                ui.add(
+                                                ui.allocate_ui_with_layout(
+                                                    egui::vec2(80.0, 32.0),
+                                                    egui::Layout::left_to_right(
+                                                        egui::Align::Center,
+                                                    ),
+                                                    |ui| {
+                                                        ui.add_sized(
+                                                            [75.0, 32.0],
+                                                            egui::Label::new(
+                                                                "Username:",
+                                                            ),
+                                                        );
+                                                    },
+                                                );
+                                                ui.add_sized(
+                                                    [200.0, 32.0],
                                                     egui::TextEdit::singleline(
                                                         &mut self.localpart,
                                                     )
@@ -235,10 +276,25 @@ impl eframe::App for EguiApp {
                                             });
 
                                             ui.horizontal(|ui| {
-                                                ui.label("Password:");
-                                                ui.add(password_widgit::password(
-                                                    &mut self.password,
-                                                ));
+                                                ui.allocate_ui_with_layout(
+                                                    egui::vec2(80.0, 32.0),
+                                                    egui::Layout::left_to_right(
+                                                        egui::Align::Center,
+                                                    ),
+                                                    |ui| {
+                                                        ui.add_sized(
+                                                            [75.0, 32.0],
+                                                            egui::Label::new(
+                                                                "Password:",
+                                                            ),
+                                                        );
+                                                    },
+                                                );
+                                                ui.add(
+                                                    password_widgit::password(
+                                                        &mut self.password,
+                                                    ),
+                                                );
                                             });
 
                                             if ui.button("Login").clicked() {
@@ -254,7 +310,7 @@ impl eframe::App for EguiApp {
                                             }
                                         }
                                         LoginChoice::SsoIdp(_idp) => {
-                                            ui.label("Login with SSO and identify provider:");
+                                            ui.label("Login with SSO and idp:");
                                             if ui
                                                 .button("Open in browser")
                                                 .clicked()

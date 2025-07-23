@@ -10,22 +10,20 @@ fn password_ui(ui: &mut egui::Ui, password: &mut String) -> egui::Response {
         ui.data_mut(|d| d.get_temp::<bool>(state_id).unwrap_or(false));
 
     let result = ui.with_layout(
-        egui::Layout::right_to_left(egui::Align::Center),
+        egui::Layout::left_to_right(egui::Align::Center),
         |ui| {
-            let response = ui
-                .selectable_label(show_plaintext, "👁")
-                .on_hover_text("Show/hide password");
-
-            if response.clicked() {
-                show_plaintext = !show_plaintext;
-            }
-
             ui.add_sized(
-                ui.available_size(),
+                [200., 32.],
                 egui::TextEdit::singleline(password)
                     .password(!show_plaintext)
                     .hint_text("Password"),
             );
+
+            let response = ui.button("👁").on_hover_text("Show/hide password");
+
+            if response.clicked() {
+                show_plaintext = !show_plaintext;
+            }
         },
     );
 
