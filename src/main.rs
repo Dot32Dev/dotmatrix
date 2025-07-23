@@ -54,14 +54,14 @@ enum LoginChoice {
     SsoIdp(IdentityProvider),
 }
 
-// #[derive(Default)]
-// enum LoginStatus {
-//     #[default]
-//     Idle,
-//     LoggingIn,
-//     Success,
-//     Error(String),
-// }
+#[derive(Default)]
+enum LoginStatus {
+    #[default]
+    Idle,
+    LoggingIn,
+    Success,
+    Error(String),
+}
 
 #[derive(Default)]
 struct EguiApp {
@@ -71,8 +71,10 @@ struct EguiApp {
     // Channels
     homeserver_status: HomeserverStatus,
     homeserver_receiver: Option<mpsc::UnboundedReceiver<HomeserverStatus>>,
-    // login_status: LoginStatus,
-    // login_receiver: Option<mpsc::UnboundedReceiver<LoginStatus>>,
+    login_status: LoginStatus,
+    login_receiver: Option<mpsc::UnboundedReceiver<LoginStatus>>,
+    client: Option<Client>,
+    client_reciever: Option<mpsc::UnboundedReceiver<Client>>,
 }
 
 impl EguiApp {
@@ -102,6 +104,10 @@ impl EguiApp {
         let (sender, receiver) = mpsc::unbounded_channel();
         self.homeserver_receiver = Some(receiver);
         self.homeserver_status = HomeserverStatus::Connecting;
+
+        let (client_sender, client_receiver) = mpsc::unbounded_channel();
+        self.client_reciever = Some(client_receiver);
+        self.client = None;
 
         let ctx = ctx.clone();
 
@@ -159,19 +165,148 @@ impl EguiApp {
             }
 
             let _ = sender.send(HomeserverStatus::AuthTypes(choices));
+            let _ = client_sender.send(client);
+            ctx.request_repaint();
+        });
+    }
+
+    fn password_login(&mut self, ctx: &egui::Context) {
+        let (sender, receiver) = mpsc::unbounded_channel();
+        self.login_receiver = Some(receiver);
+        self.login_status = LoginStatus::LoggingIn;
+        ctx.request_repaint();
+
+        let client = self
+            .client
+            .as_ref()
+            .expect(
+                "The client is created when the login options are presented",
+                // How would you login without the login options being shown?
+            )
+            .clone();
+
+        let username = self.localpart.clone();
+        let password = self.password.clone();
+
+        let ctx = ctx.clone();
+
+        tokio::spawn(async move {
+            match client
+                .matrix_auth()
+                .login_username(&username, &password)
+                .initial_device_display_name(DEFAULT_DEVICE_NAME)
+                .await
+            {
+                Ok(_) => {
+                    _ = sender.send(LoginStatus::Success);
+                    ctx.request_repaint();
+                }
+                Err(error) => {
+                    _ = sender.send(LoginStatus::Error(error.to_string()));
+                    ctx.request_repaint();
+                }
+            }
+        });
+    }
+
+    fn sso_login(&mut self, ctx: &egui::Context) {
+        let (sender, receiver) = mpsc::unbounded_channel();
+        self.login_receiver = Some(receiver);
+        self.login_status = LoginStatus::LoggingIn;
+        ctx.request_repaint();
+
+        let client = self
+            .client
+            .as_ref()
+            .expect(
+                "The client is created when the login options are presented",
+                // How would you login without the login options being shown?
+            )
+            .clone();
+
+        let ctx = ctx.clone();
+
+        tokio::spawn(async move {
+            let login_builder =
+                client.matrix_auth().login_sso(|url| async move {
+                    open::that(url)?;
+                    Ok(())
+                });
+
+            match login_builder.await {
+                Ok(_) => {
+                    _ = sender.send(LoginStatus::Success);
+                    ctx.request_repaint();
+                }
+                Err(error) => {
+                    _ = sender.send(LoginStatus::Error(error.to_string()));
+                    ctx.request_repaint();
+                }
+            }
         });
     }
 }
 
 impl eframe::App for EguiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if let Some(receiver) = &mut self.homeserver_receiver {
+            if let Ok(status) = receiver.try_recv() {
+                self.homeserver_status = status;
+                match self.homeserver_status {
+                    HomeserverStatus::AuthTypes(_) => {
+                        self.homeserver_receiver = None;
+                    }
+                    _ => (),
+                }
+            }
+        }
+
+        if let Some(receiver) = &mut self.client_reciever {
+            if let Ok(status) = receiver.try_recv() {
+                self.client = Some(status);
+                self.client_reciever = None;
+            }
+        }
+
+        if let Some(receiver) = &mut self.login_receiver {
+            if let Ok(status) = receiver.try_recv() {
+                self.login_status = status;
+                match self.login_status {
+                    LoginStatus::Success | LoginStatus::Error(_) => {
+                        self.login_receiver = None;
+                    }
+                    _ => (),
+                }
+            }
+        }
+
+        let mut enabled = true;
+        let mut log = String::new();
+
+        match self.login_status {
+            LoginStatus::Idle => {}
+            LoginStatus::LoggingIn => {
+                enabled = false;
+                log = "Logging in".to_string();
+            }
+            LoginStatus::Success => {
+                log = "Logged in".to_string();
+            }
+            LoginStatus::Error(ref error) => {
+                log = error.to_string();
+            }
+        }
+
+        let mut password_login = false;
+        let mut sso_login = false;
+
         egui::CentralPanel::default().show(ctx, |ui| {
             Modal::new(Id::new("Login")).show(ui.ctx(), |ui| {
                 ui.set_width(350.0);
-                ui.set_min_height(350.0);
+                ui.set_min_height(370.0);
                 ui.vertical_centered(|ui| {
                     ui.heading("Login");
-                    ui.add_enabled_ui(!false, |ui| {
+                    ui.add_enabled_ui(enabled, |ui| {
                         ui.horizontal(|ui| {
                             ui.allocate_ui_with_layout(
                                 egui::vec2(80.0, 32.0),
@@ -196,32 +331,18 @@ impl eframe::App for EguiApp {
                             );
 
                             if ui.button("🔍").clicked()
-                                || (response.lost_focus()
-                                    && ui.input(|i| {
-                                        i.key_pressed(egui::Key::Enter)
-                                    }))
+                                || response.lost_focus()
                             {
                                 match self.homeserver_status {
                                     HomeserverStatus::Idle
-                                    | HomeserverStatus::AuthTypes(_) => {
+                                    | HomeserverStatus::AuthTypes(_)
+                                    | HomeserverStatus::Error(_) => {
                                         self.homeserver_connect(ctx);
                                     }
                                     _ => (),
                                 }
                             }
                         });
-
-                        if let Some(receiver) = &mut self.homeserver_receiver {
-                            if let Ok(status) = receiver.try_recv() {
-                                self.homeserver_status = status;
-                                match self.homeserver_status {
-                                    HomeserverStatus::AuthTypes(_) => {
-                                        self.homeserver_receiver = None;
-                                    }
-                                    _ => (),
-                                }
-                            }
-                        }
 
                         ui.separator();
 
@@ -302,7 +423,10 @@ impl eframe::App for EguiApp {
                                             });
 
                                             if ui.button("Login").clicked() {
-                                                // self.button_clicked = true;
+                                                // Super annoying, can't call
+                                                // the function in here cause
+                                                // of rust's stupid borrow check
+                                                password_login = true;
                                             }
                                         }
                                         LoginChoice::Sso => {
@@ -311,6 +435,7 @@ impl eframe::App for EguiApp {
                                                 .button("Open in browser")
                                                 .clicked()
                                             {
+                                                sso_login = true;
                                             }
                                         }
                                         LoginChoice::SsoIdp(_idp) => {
@@ -329,9 +454,19 @@ impl eframe::App for EguiApp {
                             }
                         }
                     });
+
+                    ui.label(log);
                 });
             });
         });
+
+        if password_login {
+            self.password_login(ctx);
+        }
+
+        if sso_login {
+            self.sso_login(ctx);
+        }
     }
 }
 
