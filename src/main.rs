@@ -12,6 +12,7 @@ use eframe::egui;
 // };
 // use tokio::sync::mpsc;
 
+mod chat;
 mod login;
 mod password_widgit;
 
@@ -32,7 +33,7 @@ async fn main() {
 
 enum State {
     Login(login::LoginApp),
-    Chat,
+    Chat(chat::ChatApp),
 }
 
 struct EguiApp(State);
@@ -54,16 +55,21 @@ impl EguiApp {
 }
 
 impl eframe::App for EguiApp {
-    fn update(&mut self, _ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         match &mut self.0 {
             State::Login(login_app) => {
                 login_app.draw();
 
                 if login_app.ready() {
-                    self.0 = State::Chat;
+                    self.0 = State::Chat(chat::ChatApp::new(
+                        login_app.take_client().unwrap(),
+                        ctx.clone(),
+                    ));
                 }
             }
-            State::Chat => (),
+            State::Chat(chat_app) => {
+                chat_app.draw();
+            }
         }
     }
 }
