@@ -46,9 +46,17 @@ impl ChatApp {
         }
 
         egui::CentralPanel::default().show(&self.ctx.clone(), |ui| {
-            for message in &self.messages {
-                ui.label(message);
-            }
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.with_layout(
+                    egui::Layout::top_down(egui::Align::LEFT)
+                        .with_cross_justify(true),
+                    |ui| {
+                        for message in &self.messages {
+                            ui.label(message);
+                        }
+                    },
+                );
+            });
         });
     }
 }
@@ -74,5 +82,11 @@ async fn handle_room_message(
         .expect("The room member doesn't exist");
     let name = member.name();
 
-    _ = sender.send(format!("{name}: {}", msgtype.body));
+    let room_name = if let Some(maybe_name) = room.canonical_alias() {
+        maybe_name.to_string()
+    } else {
+        String::new()
+    };
+
+    _ = sender.send(format!("{room_name} -> {name}: {}", msgtype.body));
 }
